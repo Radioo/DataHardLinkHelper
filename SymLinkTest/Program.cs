@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -11,12 +12,17 @@ namespace DataHardLinkHelper
     {
         public static string workdir = Directory.GetCurrentDirectory();
         public static string dbdir = workdir + @"\DB";
+        public static string xmldir = workdir + @"\XML";
         
         public static void Main()
         {
             if (Directory.Exists(dbdir) == false)
             {
                 Directory.CreateDirectory(dbdir);
+            }
+            if (Directory.Exists(xmldir) == false)
+            {
+                Directory.CreateDirectory(xmldir);
             }
             int usr = 99;
             while (usr != 0)
@@ -25,8 +31,9 @@ namespace DataHardLinkHelper
                 Console.WriteLine(
                     "Menu:\n" +
                     "[1] Add an instance\n" +
-                    "[2] Initiate hard link for an instance\n" +
-                    "[3] Copy files\n" +
+                    "[2] Initiate hard links\n" +
+                    "[3] Copy files from DB\n" +
+                    "[4] Delete unused DB files\n" +
                     "[0] Exit"
                     );
                 usr = Convert.ToInt32(Console.ReadLine());
@@ -42,6 +49,10 @@ namespace DataHardLinkHelper
                 {
                     CopyFromInstance();
                 }
+                else if (usr == 4)
+                {
+                    DeleteUnusedFiles();
+                }
             }
             Environment.Exit(1);
         }
@@ -56,6 +67,8 @@ namespace DataHardLinkHelper
             table.Columns.Add("FilePath");
             Console.WriteLine(@"Instance data path (these files will be moved to currentdir\DB, example input: D:\IIDX 20\contents\data):");
             string sourcepath = Console.ReadLine();
+            Console.WriteLine(@"Move or copy files? [M\C]");
+            string or = Console.ReadLine().ToString().ToLower();
             DirectoryInfo dir = new(sourcepath);
             int xmlfilecount = 0;
             int newdbfilecount = 0;
@@ -67,8 +80,8 @@ namespace DataHardLinkHelper
                 table.Rows.Add(file.Name, hash + file.Extension, filePath);
                 if (File.Exists($@"{dbdir}\{hash}{file.Extension}") == false)
                 {
-                    Console.WriteLine($"Moving {file.Name} as {hash+file.Extension} to the DB");
-                    File.Move(file.FullName, $@"{dbdir}\{hash}{file.Extension}");
+                    Console.WriteLine($"Adding {file.Name} as {hash+file.Extension} to the DB");
+                    MoveOrCopy(or, file.FullName, $@"{dbdir}\{hash}{file.Extension}");
                     newdbfilecount++;
                 }
                 else
@@ -80,7 +93,7 @@ namespace DataHardLinkHelper
             Console.WriteLine($"{xmlfilecount} files registered in {name}.xml\n" +
                 $"{newdbfilecount} new files added to the main DB\n" +
                 $"That's {xmlfilecount - newdbfilecount} files already in the main DB!");
-            table.WriteXml(workdir + $@"\{name}.xml", XmlWriteMode.WriteSchema);
+            table.WriteXml(xmldir + $@"\{name}.xml", XmlWriteMode.WriteSchema);
             Console.WriteLine("Press a key to continue...");
             Console.ReadKey();
 
@@ -93,7 +106,7 @@ namespace DataHardLinkHelper
             Console.WriteLine(@"Input link destination (example: D:\IIDX 20\contents\data):");
             string dest = Console.ReadLine();
             DataTable table = new("Data");
-            table.ReadXml(workdir + @"\" + input + ".xml");
+            table.ReadXml(xmldir + @"\" + input + ".xml");
             Console.WriteLine("Creating folders...");
             var distinctNames = (from row in table.AsEnumerable()
                                  select row.Field<string>("FilePath")).Distinct();
@@ -122,7 +135,7 @@ namespace DataHardLinkHelper
             Console.WriteLine("Input destination:");
             string dest = Console.ReadLine();
             DataTable table = new();
-            table.ReadXml(workdir + @"\" + input + ".xml");
+            table.ReadXml(xmldir + @"\" + input + ".xml");
             Console.WriteLine("Creating folders...");
             var distinctNames = (from row in table.AsEnumerable()
                                  select row.Field<string>("FilePath")).Distinct();
@@ -144,6 +157,48 @@ namespace DataHardLinkHelper
             Console.WriteLine("Done, press a key to continue...");
             Console.ReadKey();
         }
+        public static void DeleteUnusedFiles()
+        {
+            Console.WriteLine("This will delete files which are not used in any instance xml, press a key to continue...");
+            Console.ReadKey();
+            DirectoryInfo dir = new(xmldir);           
+            HashSet<string> xmlEntries = new();
+            DirectoryInfo _dbdir = new(dbdir);
+            Console.WriteLine("Parsing DB files...");
+            foreach (var file in _dbdir.GetFiles())
+            {
+                xmlEntries.Add(file.Name);
+            }
+            foreach (var file in dir.GetFiles())
+            {
+                DataTable dt = new();
+                dt.ReadXml(file.FullName);
+                Console.WriteLine($"Reading from {file.Name}");
+                var distinctMD5 = (from row in dt.AsEnumerable() 
+                                   select row.Field<string>("MD5")).Distinct();
+                foreach (var dis in distinctMD5)
+                {
+                    xmlEntries.Remove(dis.ToString());
+                }
+            }
+            Console.WriteLine($"Found {xmlEntries.Count} unused files.");
+            foreach (var entry in xmlEntries)
+            {
+                Console.WriteLine(entry);
+            }
+            Console.WriteLine(@"Do you want to delete these files? [Y\N]");
+            string usr = Console.ReadLine().ToString().ToLower();
+            if (usr == "y")
+            {
+                foreach (var entry in xmlEntries)
+                {
+                    Console.WriteLine($"Deleting {entry}");
+                    File.Delete(dbdir + @"\" + entry);
+                }
+            }
+            Console.WriteLine("Done, press a key to continue...");
+            Console.ReadKey();
+        }
 
         public static string GetMD5Checksum(string filename)
         {
@@ -151,6 +206,21 @@ namespace DataHardLinkHelper
             using var stream = File.OpenRead(filename);
             var hash = md5.ComputeHash(stream);
             return BitConverter.ToString(hash).Replace("-", "");
+        }
+        public static void MoveOrCopy(string or, string source, string target)
+        {
+            if (or == "m")
+            {
+                File.Move(source, target);
+            }
+            else if (or == "c")
+            {
+                File.Copy(source, target);
+            }
+            else
+            {
+                Console.WriteLine("Very funny, you probably broke it");
+            }
         }
         [DllImport("Kernel32.dll", CharSet = CharSet.Unicode)]
         static extern bool CreateHardLink(
