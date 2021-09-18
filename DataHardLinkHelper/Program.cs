@@ -65,7 +65,7 @@ namespace DataHardLinkHelper
             table.Columns.Add("File");
             table.Columns.Add("MD5");
             table.Columns.Add("FilePath");
-            Console.WriteLine(@"Instance data path (these files will be moved to currentdir\DB, example input: D:\IIDX 20\contents\data):");
+            Console.WriteLine(@"Instance data path (these files will be added to currentdir\DB, example input: D:\IIDX 20\contents\data):");
             string sourcepath = Console.ReadLine();
             Console.WriteLine(@"Move or copy files? [M\C]");
             string or = Console.ReadLine().ToString().ToLower();
